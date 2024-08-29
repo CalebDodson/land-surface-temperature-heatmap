@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Monthly Global Land-Surface Temperature</title>
+        <script src="https://d3js.org/d3.v7.min.js"></script>
+
+        <style>
+            h1 {
+                margin: 50px auto 0;
+                text-align: center;
+            }
+            #description {
+                margin: 0px auto 30px;
+                text-align: center;
+                font-size: 1.3em;
+            }
+            #heatmap {
+                margin: 0 auto;
+                display: flex;
+                justify-content: center;
+                background-color: #F8F8FF;
+                border-radius: 5px;
+                box-shadow: 0px 5px 5px -3px rgba(0, 0, 0, 0.2),
+                            0px 8px 10px 1px rgba(0, 0, 0, 0.14),
+                            0px 3px 14px 2px rgba(0, 0, 0, 0.12);
+            }
+            #tooltip {
+                position: absolute;
+                background-color: #A9A9A9;
+                padding: 8px;
+                border-radius: 5px;
+                pointer-events: none;
+                opacity: 0;
+                box-shadow: 0px 1px 3px rgba(0, 0, 0, 0.2), 
+                            0px 1px 1px rgba(0, 0, 0, 0.14), 
+                            0px 2px 1px rgba(0, 0, 0, 0.12);
+                font-family: "Roboto", sans-serif;
+            }
+            .cell:hover {
+                fill: #9B2DFF;
+            }
+            #heatmap-legend {
+                margin: 40px auto;
+                display: flex;
+                border-radius: 5px;
+                box-shadow: 0px 5px 5px -3px rgba(0, 0, 0, 0.2),
+                            0px 8px 10px 1px rgba(0, 0, 0, 0.14),
+                            0px 3px 14px 2px rgba(0, 0, 0, 0.12);
+            }
+        </style>
+    </head>
+    <body>
+        <h1 id="title">Monthly Global Land-Surface Temperature</h1>
+        <div id="description">Base Temperature: 8.66°C<br>1753-2015</div>
+        
+        <div id="chart">
+            <svg id="heatmap"></svg>
+        </div>
+        <div id="tooltip"></div>
+        <div id="legend">
+            <svg id="heatmap-legend"></svg>
+        </div>
+        <script>
+            //fetch data
+            d3.json("https://raw.githubusercontent.com/freeCodeCamp/ProjectReferenceData/master/global-temperature.json")
+                .then(data => {
+                    const dataset = data.monthlyVariance;
+                    const baseTemperature = parseFloat(data.baseTemperature.toFixed(1));
+
+            //chart dimensions
+            const margin = { top: 30, right: 30, bottom: 40, left: 80 };
+            const height = 400;
+            const width = 1048;
+            
+            //svg element
+            const svg = d3.select("#heatmap")
+                    .attr("width", width + margin.left + margin.right)
+                    .attr("height", height + margin.top + margin.bottom)
+                    .append("g");
+            
+            //xScale and yScale
+            const xScale = d3.scaleTime()
+                    .domain(d3.extent(dataset, d => new Date(d.year, 0)))
+                    .range([0, width]);
+
+            const yScale = d3.scaleBand()
+                    .domain([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11])
+                    .range([0, height]);
+
+            //x and y axis
+            const xAxis = d3.axisBottom(xScale)
+                    .tickFormat(d3.timeFormat("%Y"));
+
+            const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+            const yAxis = d3.axisLeft(yScale)
+                    .tickFormat(d => monthNames[d]);
+
+            svg.append("g")
+                    .attr("id", "x-axis")
+                    .attr("transform", `translate(${margin.left}, ${height + margin.top})`)
+                    .call(xAxis);
+
+            svg.append("g")
+                    .attr("id", "y-axis")
+                    .attr("transform", `translate(${margin.left}, ${margin.top})`)
+                    .call(yAxis);
+
+            //tooltip and rects
+            const tooltip = d3.select("#tooltip");
+
+            const minTemperature = d3.min(dataset, d => baseTemperature + d.variance);
+            const maxTemperature = d3.max(dataset, d => baseTemperature + d.variance);
+            const temperatureClasses = d3.scaleQuantize()
+                    .domain([minTemperature, maxTemperature])
+                    .range(d3.range(1,10).map(i => `temp${i}`));
+
+            const colorScale = d3.scaleQuantize()
+                    .domain([minTemperature, maxTemperature])
+                    .range(d3.schemeRdYlBu[9].reverse());
+
+            svg.selectAll("rect")
+                    .data(dataset)
+                    .enter()
+                    .append("rect")
+                    .attr("class", d => {
+                        const temp = baseTemperature + d.variance;
+                        return `cell ${temperatureClasses(temp)}`;
+                     }) // Combine base class with temperature class)
+                    .attr("data-month", d => d.month - 1)
+                    .attr("data-year", d => d.year)
+                    .attr("data-temp", d =>  baseTemperature + d.variance)
+                    .attr("transform", `translate(${margin.left}, ${margin.top})`)
+                    .attr("x",  d => xScale(new Date(d.year, 0)))
+                    .attr("y", d => yScale(d.month - 1))
+                    .attr("width", width / (xScale.domain()[1].getFullYear() - xScale.domain()[0].getFullYear() + 1))
+                    .attr("height", yScale.bandwidth())
+                    .attr("fill", d => colorScale(baseTemperature + d.variance)) 
+                    .on("mouseover", function(event, d) {
+                        tooltip.transition().style("opacity",0.9);
+                        tooltip.html(`${d.year} - ${monthNames[d.month - 1]}<br>Average: ${(baseTemperature + d.variance).toFixed(1)}°C<br>Variance: ${d.variance.toFixed(1)}°C`)
+                            .attr("data-year", d.year)
+                            .style("left", (event.pageX + 5) + "px")
+                            .style("top", (event.pageY - 28) + "px");
+                    })
+                    .on("mouseout", function() {
+                        tooltip.transition().style("opacity", 0);
+                    })
+
+                    // Dimensions for the legend
+            // Define legend dimensions and colors
+            const legendWidth = 300; // Adjust according to your design
+            const legendHeight = 20;
+            const legendMargin = {top: 10, right: 40, bottom: 30, left: 40 }
+            const numberOfColors = colorScale.range().length;
+            const segmentWidth = legendWidth / numberOfColors; // Width of each color segment
+
+            // Create the legend container
+            const legendSvg = d3.select("#heatmap-legend")
+                .attr("width", legendWidth + legendMargin.right + legendMargin.left)
+                .attr("height", legendHeight + legendMargin.bottom + legendMargin.top);
+
+            // Add color rectangles
+            legendSvg.selectAll("rect")
+                .data(colorScale.range())
+                .enter()
+                .append("rect")
+                .attr("x", (d, i) => i * segmentWidth)
+                .attr("y", 0)
+                .attr("transform", `translate(${legendMargin.left}, ${legendMargin.top})`)
+                .attr("width", segmentWidth)
+                .attr("height", legendHeight)
+                .attr("fill", d => d)
+                .append("g");
+                    
+            // Add text labels for min and max temperatures
+            legendSvg.append("text")
+                .attr("x", legendMargin.left)
+                .attr("y", legendHeight + 15 + legendMargin.top)
+                .style("text-anchor", "middle")
+                .text(minTemperature.toFixed(1) + "°C");
+
+            legendSvg.append("text")
+                .attr("x", legendWidth + legendMargin.left)
+                .attr("y", legendHeight + 15 + legendMargin.top)
+                .style("text-anchor", "middle")
+                .text(maxTemperature.toFixed(1) + "°C"); 
+
+            })
+                .catch(error => {
+                    console.error('Error fetching data:', error);
+            });
+        </script>
+        <script src="https://cdn.freecodecamp.org/testable-projects-fcc/v1/bundle.js"></script>
+    </body>
+</html>
